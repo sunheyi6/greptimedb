@@ -105,6 +105,43 @@ where
 
         self.transformer.transform(val)
     }
+
+    pub async fn batch_exec(&self, val: value::Value) -> Result<Vec<T::Output>, String> {
+        match val {
+            crate::Value::Array(arr) => {
+                let handles = arr
+                    .into_iter()
+                    .map(|item| {
+                        let processors = self.processors.clone();
+                        let transformer = self.transformer.clone();
+                        common_runtime::spawn_write(async move {
+                            let mut val = item;
+                            for processor in processors.iter() {
+                                val = processor.exec(val)?;
+                            }
+
+                            transformer.transform(val)
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                let mut results = Vec::with_capacity(handles.capacity());
+                for handle in handles {
+                    match handle.await {
+                        Ok(v) => match v {
+                            Ok(output) => results.push(output),
+                            Err(e) => return Err(e),
+                        },
+                        Err(e) => {
+                            return Err(format!("failed to execute pipeline in parallel: {}", e))
+                        }
+                    }
+                }
+
+                Ok(results)
+            }
+            _ => self.exec(val).map(|v| vec![v]),
+        }
+    }
 }
 
 #[cfg(test)]

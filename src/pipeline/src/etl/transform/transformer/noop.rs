@@ -15,6 +15,7 @@
 use crate::etl::transform::{Transformer, Transforms};
 use crate::etl::value::Value;
 
+#[derive(Clone)]
 pub struct NoopTransformer;
 
 impl std::fmt::Display for NoopTransformer {

@@ -31,8 +31,8 @@ const TRANSFORM_DEFAULT: &str = "default";
 pub use transformer::greptime::GreptimeTransformer;
 // pub use transformer::noop::NoopTransformer;
 
-pub trait Transformer: std::fmt::Display + Sized + Send + Sync + 'static {
-    type Output;
+pub trait Transformer: std::fmt::Display + Clone + Sized + Send + Sync + 'static {
+    type Output: Send + Sync + 'static;
 
     fn new(transforms: Transforms) -> Result<Self, String>;
     fn transform(&self, val: crate::etl::value::Value) -> Result<Self::Output, String>;

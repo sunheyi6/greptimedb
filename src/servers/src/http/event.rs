@@ -254,10 +254,28 @@ async fn ingest_logs_inner(
     let pipeline = state
         .get_pipeline(&pipeline_name, version, query_ctx.clone())
         .await?;
-    let transformed_data: Rows = pipeline
-        .exec(pipeline_data)
+
+    // let transformed_data: Rows = pipeline
+    //     .exec(pipeline_data)
+    //     .map_err(|reason| PipelineTransformSnafu { reason }.build())
+    //     .context(PipelineSnafu)?;
+
+    // try batch exec
+    let data: Vec<Rows> = pipeline
+        .batch_exec(pipeline_data)
+        .await
         .map_err(|reason| PipelineTransformSnafu { reason }.build())
         .context(PipelineSnafu)?;
+
+    if data.is_empty() {
+        return Ok(GreptimedbV1Response::from_output(vec![])
+            .await
+            .with_execution_time(start.elapsed().as_millis() as u64));
+    }
+
+    let one = data[0].schema.clone();
+    let rows = data.into_iter().flat_map(|r| r.rows).collect::<Vec<_>>();
+    let transformed_data = Rows { schema: one, rows };
 
     let insert_request = RowInsertRequest {
         rows: Some(transformed_data),
