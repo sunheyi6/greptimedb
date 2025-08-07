@@ -150,6 +150,7 @@ impl MysqlServer {
             let spawn_config = spawn_config.clone();
             let io_runtime = io_runtime.clone();
             let process_id = process_manager.as_ref().map(|p| p.next_id()).unwrap_or(8);
+            let prepared_stmt_cache_capacity = spawn_config.prepared_stmt_cache_capacity;
             async move {
                 match tcp_stream {
                     Err(e) => warn!(e; "Broken pipe"), // IoError doesn't impl ErrorExt.
@@ -158,8 +159,14 @@ impl MysqlServer {
                             warn!(e; "Failed to set TCP nodelay");
                         }
                         io_runtime.spawn(async move {
-                            if let Err(error) =
-                                Self::handle(io_stream, spawn_ref, spawn_config, process_id).await
+                            if let Err(error) = Self::handle(
+                                io_stream,
+                                spawn_ref,
+                                spawn_config,
+                                process_id,
+                                prepared_stmt_cache_capacity,
+                            )
+                            .await
                             {
                                 warn!(error; "Unexpected error when handling TcpStream");
                             };
@@ -175,10 +182,19 @@ impl MysqlServer {
         spawn_ref: Arc<MysqlSpawnRef>,
         spawn_config: Arc<MysqlSpawnConfig>,
         process_id: u32,
+        prepared_stmt_cache_capacity: usize,
     ) -> Result<()> {
         debug!("MySQL connection coming from: {}", stream.peer_addr()?);
         crate::metrics::METRIC_MYSQL_CONNECTIONS.inc();
-        if let Err(e) = Self::do_handle(stream, spawn_ref, spawn_config, process_id).await {
+        if let Err(e) = Self::do_handle(
+            stream,
+            spawn_ref,
+            spawn_config,
+            process_id,
+            prepared_stmt_cache_capacity,
+        )
+        .await
+        {
             if let Error::InternalIo { error } = &e
                 && error.kind() == std::io::ErrorKind::ConnectionAborted
             {
